@@ -1,0 +1,33 @@
+# Full path: steeljet_tracker/.gitignore
+#
+# Anything listed here stays on the server (or your machine) but never gets
+# committed or pushed to GitHub, and is never touched by `git pull` /
+# `git reset --hard` during a Pelican install/reinstall.
+
+# Your real, secret-bearing config. Only example.config.ini is tracked.
+config.ini
+
+# Runtime state / logs / debug event stream -- these are generated data,
+# not code, and must survive across git pulls.
+alert_state.json
+*.log
+*.log.*
+events.jsonl
+
+# Large third-party reference data -- not part of the repo, uploaded once
+# via SFTP and left alone by git.
+airports.csv
+runways.csv
+
+# Python housekeeping.
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Editor / OS noise.
+.DS_Store
+.vscode/
+.idea/

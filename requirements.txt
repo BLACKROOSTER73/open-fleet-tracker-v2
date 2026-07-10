@@ -1,0 +1,10 @@
+pandas
+requests
+
+# The OpenSky Python client used to require a fragile git-based pip install
+# (pip install "git+https://github.com/openskynetwork/opensky-api.git...").
+# That client is now vendored directly into this project as
+# opensky_api.py (same directory as fleet_tracker.py), so it is NOT listed
+# here and does not need internet/git access to install. If you ever want
+# to update it, replace opensky_api.py with the latest version from
+# https://github.com/openskynetwork/opensky-api/blob/master/python/opensky_api.py
