@@ -80,6 +80,31 @@ class Config:
         if not self.icaos:
             raise SystemExit("No ICAO24 codes loaded; check the 'icaos' line in config.ini")
 
+        # Optional bounding box (min_lat, max_lat, min_lon, max_lon), all in
+        # WGS-84 decimal degrees. Leave any of these four blank in config.ini
+        # to fall back to an unrestricted/global states query (the original
+        # behavior). Filling them in narrows every OpenSky poll to a region,
+        # which cuts the API credit cost per call (OpenSky bills by bounding
+        # box area: <=25 sq deg = 1 credit, 25-100 = 2, 100-400 = 3, >400 or
+        # global = 4 credits -- see https://openskynetwork.github.io/opensky-api/rest.html#limitations).
+        # Only use this if the aircraft you track never leave the box you
+        # configure, since anything outside it will not be returned at all.
+        bbox_raw = (
+            parser.get("tracker", "bbox_min_lat", fallback="").strip(),
+            parser.get("tracker", "bbox_max_lat", fallback="").strip(),
+            parser.get("tracker", "bbox_min_lon", fallback="").strip(),
+            parser.get("tracker", "bbox_max_lon", fallback="").strip(),
+        )
+        if all(bbox_raw):
+            self.bbox = tuple(float(v) for v in bbox_raw)
+        elif any(bbox_raw):
+            raise SystemExit(
+                "Partial bounding box in config.ini -- set all four of "
+                "bbox_min_lat/bbox_max_lat/bbox_min_lon/bbox_max_lon, or none of them."
+            )
+        else:
+            self.bbox = None
+
         # ---- alerts ----
         self.landing_recheck_sec = parser.getint("alerts", "landing_recheck_seconds", fallback=300)
         self.landing_alt_margin_ft = parser.getfloat("alerts", "landing_alt_margin_ft", fallback=250.0)

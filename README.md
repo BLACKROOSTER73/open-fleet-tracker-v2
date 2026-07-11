@@ -81,6 +81,62 @@ Both are disabled by default and change nothing about existing behavior:
   line per notable event (candidate created, alert sent/suppressed, etc.)
   to `events_file`, useful for debugging why an alert did or didn't fire.
 
+## OpenSky rate limits, credits, and the optional bounding box
+
+OpenSky bills every `/states/all` call against a daily credit quota --
+anonymous access gets 400 credits/day, a free registered account
+(`client_id`/`client_secret` under `[opensky]`) gets 4,000/day, and an
+active feeder gets 8,000/day
+([official limits](https://openskynetwork.github.io/opensky-api/rest.html#limitations)).
+Credit cost per call depends on the geographic area queried:
+
+| Bounding box area | Credits/call |
+|---|---|
+| <= 25 sq deg | 1 |
+| 25 - 100 sq deg | 2 |
+| 100 - 400 sq deg | 3 |
+| > 400 sq deg, or no bounding box (global) | 4 |
+
+If you poll `get_states()` with no bounding box (the original default),
+every call is billed at the 4-credit "global" tier. At `poll_seconds = 60`
+that's 1,440 calls/day needed for 24/7 uptime x 4 credits = 5,760
+credits/day -- more than even an authenticated 4,000/day account allows,
+which is exactly what produces the "OpenSky returned no data" backoff
+messages in the log once the daily quota runs out.
+
+`config.ini` supports an optional bounding box to scope every query
+(`fetch_states()` and the single-aircraft follow-up lookup both use it):
+
+```ini
+[tracker]
+bbox_min_lat = 14.5
+bbox_max_lat = 75
+bbox_min_lon = -170
+bbox_max_lon = -50
+```
+
+Set all four keys, or leave all four blank to fall back to the original
+unrestricted global query -- a partial box raises a startup error. Any
+aircraft outside the box will not be detected at all, so only use one if
+your tracked aircraft never leave that region.
+
+The example above covers Canada, the continental US + Alaska, Mexico, and
+the Bahamas -- but at roughly 7,260 sq degrees, it's still comfortably
+over the 400 sq degree cutoff, so it stays in the same 4-credit "global"
+tier as no bounding box at all. It's useful for filtering out
+irrelevant aircraft, but it does **not** reduce your credit usage. A box
+tight enough to actually drop a credit tier would need to be a small
+regional area (a few hundred miles across, not a continent).
+
+The lever that actually controls your credit budget is `poll_seconds`. At
+the 4-credit tier, an authenticated (4,000/day) account can sustain 24/7
+polling no faster than about 86 seconds/poll with zero margin;
+`example.config.ini` ships with `poll_seconds = 120` to leave headroom for
+occasional follow-up lookups. Only poll faster than that if you've
+narrowed the bounding box enough to drop into a cheaper credit tier, or
+have a higher-tier OpenSky account.
+
+
 ## Deploying on Pelican (auto-updating from GitHub)
 
 This project is designed to live in a GitHub repo and be deployed as a

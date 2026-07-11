@@ -55,9 +55,7 @@ class OpenSkyClient:
         """Returns (aircraft_list, retry_wait). aircraft_list is None on error."""
         while True:
             try:
-                states = self.api.get_states()
-                self._consecutive_429 = 0
-                return states.states, 0
+                states = self.api.get_states(bbox=self.config.bbox or ())
             except requests.exceptions.HTTPError as e:
                 resp = getattr(e, "response", None)
                 if resp is not None and resp.status_code == 429:
@@ -89,9 +87,35 @@ class OpenSkyClient:
                 logger.exception("Failed to fetch states: %s", e)
                 return None, 0
 
+            if states is None:
+                # The vendored OpenSky client does not raise an exception for
+                # non-200/non-404 responses (rate limiting, auth issues,
+                # server errors, etc.) -- get_states() just returns None.
+                # Previously this fell through to `states.states` below and
+                # raised an AttributeError on every occurrence, which is what
+                # was spamming the console. Treat it the same way as a 429:
+                # back off with exponential growth (capped at max_backoff)
+                # and retry, instead of crashing into an exception trace.
+                self._consecutive_429 += 1
+                backoff = min(
+                    self.config.max_backoff,
+                    self.config.poll_seconds * (2 ** (self._consecutive_429 - 1)),
+                )
+                backoff += random.uniform(0, 10)
+                logger.warning(
+                    "OpenSky returned no data (rate limited, auth issue, or "
+                    "server error); backing off for %.0f seconds",
+                    backoff,
+                )
+                time.sleep(backoff)
+                continue
+
+            self._consecutive_429 = 0
+            return states.states, 0
+
     def get_current_aircraft_state(self, icao24):
         try:
-            states = self.api.get_states(icao24=icao24)
+            states = self.api.get_states(icao24=icao24, bbox=self.config.bbox or ())
             if not states or not states.states:
                 return None
             for aircraft in states.states:
