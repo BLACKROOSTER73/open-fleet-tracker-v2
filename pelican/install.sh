@@ -20,6 +20,13 @@
 apt-get update >/dev/null 2>&1
 apt-get install -y git ca-certificates >/dev/null 2>&1
 
+# The install container runs as root, but /mnt/server is owned by a
+# different UID (Pelican's "container" user). Git refuses to operate on a
+# directory it doesn't consider "safe" in that situation and prints:
+#   fatal: detected dubious ownership in repository at '/mnt/server'
+# Explicitly trust it so clone/fetch/reset below actually run.
+git config --global --add safe.directory /mnt/server
+
 cd /mnt/server || exit 1
 
 REPO="${GIT_REPOSITORY}"
