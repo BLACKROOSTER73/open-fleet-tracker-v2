@@ -71,6 +71,56 @@ python3 fleet_tracker.py --force-pending-alerts
 
 With no flags, it runs the normal continuous poll loop.
 
+## Landing detection: quiet-timeout confidence scoring
+
+A landing candidate can resolve two ways:
+
+1. **Ground-confirmed** -- OpenSky reports `on_ground` for long enough
+   (`landing_on_ground_hold_seconds` / `landing_on_ground_min_polls`). This
+   path is unchanged.
+2. **Quiet timeout** -- OpenSky stops sending *any* position/contact update
+   for the aircraft at all, for `landing_no_position_timeout_seconds`.
+
+The quiet-timeout path used to send a "likely landing" as soon as the
+timeout elapsed, with no other evidence. That's too eager: OpenSky state
+vectors are snapshots, and individual position/velocity fields can already
+go stale/absent after roughly 15 seconds without a fresh update, and
+`on_ground` isn't guaranteed to be reported right at touchdown -- so an
+aircraft can go quiet mid-flight (coverage gap, handoff between receivers,
+etc.) just as easily as it can go quiet because it landed.
+
+Instead, once the quiet timeout elapses, the candidate is scored on
+multiple corroborating signals before it's treated as a likely landing:
+
+| Signal | Points |
+| --- | --- |
+| `on_ground` was seen at any point for this candidate | +3 |
+| Lowest tracked altitude is below `landing_quiet_low_alt_ft` (default 1500 ft) | +2 |
+| Current (last known) altitude is below `landing_quiet_current_alt_ft` (default 2500 ft) | +2 |
+| Last known vertical rate was negative (descending) | +1 |
+| Last known speed is below `landing_quiet_speed_kn` (default 160 kn) | +1 |
+| Aircraft had previously been marked "seen airborne" | +1 |
+| It disappeared after entering candidate state (received at least one fresh update after being created as a candidate), not immediately on creation | +1 |
+
+- **Score >= `landing_quiet_confidence_threshold`** (default 5): sends the
+  "likely landing" alert, same as before.
+- **Score below threshold**: no alert yet. The candidate keeps waiting and
+  is rescored on every tick, so it can still clear the bar later (e.g. once
+  altitude/speed data catches up). Once it's been quiet for
+  `landing_quiet_hard_cap_seconds` (default 2700s / 45 min) and still hasn't
+  cleared the threshold, it's logged as suppressed and dropped rather than
+  alerting on weak evidence, and its flight lock is released so a genuine
+  future landing for that aircraft isn't permanently blocked.
+
+All of these are tunable under `[alerts]` in `config.ini` -- see
+`example.config.ini` for the exact keys and defaults. `landing_no_position_timeout_seconds`
+was also bumped from 900s to 1080s (18 min) as part of this change, since a
+short whole-aircraft quiet window is itself weak evidence given the 15s
+OpenSky staleness window mentioned above.
+
+Source: [OpenSky REST API docs](https://openskynetwork.github.io/opensky-api/rest.html#limitations)
+on state vector field staleness and `on_ground` behavior.
+
 ## New optional config sections
 
 Both are disabled by default and change nothing about existing behavior:

@@ -113,7 +113,7 @@ class Config:
         self.landing_on_ground_hold_sec = parser.getint("alerts", "landing_on_ground_hold_seconds", fallback=480)
         self.landing_on_ground_min_polls = parser.getint("alerts", "landing_on_ground_min_polls", fallback=2)
         self.landing_no_position_timeout_sec = parser.getint(
-            "alerts", "landing_no_position_timeout_seconds", fallback=900
+            "alerts", "landing_no_position_timeout_seconds", fallback=1080
         )
         self.airborne_tracking_altitude_ft = parser.getfloat(
             "alerts", "airborne_tracking_altitude_ft", fallback=5000.0
@@ -121,6 +121,34 @@ class Config:
         self.followup_delay_sec = parser.getint("alerts", "followup_delay_seconds", fallback=1200)
         # Altitude above which an aircraft counts as "seen airborne" outright.
         self.seen_airborne_altitude_ft = parser.getfloat("alerts", "seen_airborne_altitude_ft", fallback=500.0)
+
+        # ---- quiet-timeout landing confidence scoring ----
+        # A candidate going quiet (no fresh position/contact update at all)
+        # is not, by itself, reliable evidence of a landing -- OpenSky state
+        # vectors are snapshots, and position/velocity fields can already go
+        # stale/absent after roughly 15 seconds without a fresh update, while
+        # on_ground is not guaranteed to be reported right at touchdown.
+        # Once landing_no_position_timeout_sec has elapsed with no updates,
+        # score the candidate on multiple weaker signals instead of trusting
+        # silence alone; only send a "likely landing" once the score clears
+        # landing_quiet_confidence_threshold. If it never clears the
+        # threshold, keep waiting until landing_quiet_hard_cap_seconds, then
+        # give up and drop the candidate rather than alert on weak evidence.
+        self.landing_quiet_confidence_threshold = parser.getint(
+            "alerts", "landing_quiet_confidence_threshold", fallback=5
+        )
+        self.landing_quiet_hard_cap_sec = parser.getint(
+            "alerts", "landing_quiet_hard_cap_seconds", fallback=2700
+        )
+        self.landing_quiet_low_alt_ft = parser.getfloat(
+            "alerts", "landing_quiet_low_alt_ft", fallback=1500.0
+        )
+        self.landing_quiet_current_alt_ft = parser.getfloat(
+            "alerts", "landing_quiet_current_alt_ft", fallback=2500.0
+        )
+        self.landing_quiet_speed_kn = parser.getfloat(
+            "alerts", "landing_quiet_speed_kn", fallback=160.0
+        )
 
         # ---- weather ----
         self.weather_timeout_sec = parser.getint("weather", "timeout_seconds", fallback=12)

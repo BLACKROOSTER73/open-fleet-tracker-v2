@@ -37,6 +37,14 @@ def feet_from_meters(val):
     return float(val) * 3.28084
 
 
+def knots_from_mps(val):
+    """OpenSky's `velocity` field is ground speed in m/s; convert to knots
+    for the quiet-timeout confidence scoring's ~160 kn threshold."""
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return None
+    return float(val) * 1.94384
+
+
 def get_altitude_ft(aircraft):
     geo_ft = feet_from_meters(getattr(aircraft, "geo_altitude", None))
     baro_ft = feet_from_meters(getattr(aircraft, "baro_altitude", None))
@@ -158,6 +166,7 @@ class Tracker:
         on_ground=False,
         last_contact=None,
         time_position=None,
+        vertical_rate=None,
     ):
         candidates = self.state.bucket("landing_candidates")
         existing = candidates.get(icao24)
@@ -185,6 +194,7 @@ class Tracker:
                 "last_contact": last_contact,
                 "time_position": time_position,
                 "last_position_or_contact_at": newest_seen,
+                "vertical_rate": vertical_rate,
             }
             # Lock the flight the moment it becomes a candidate so it cannot
             # re-enter the pipeline a second time this flight cycle.
@@ -217,6 +227,13 @@ class Tracker:
             existing["baro_altitude"] = baro_altitude
         if trigger:
             existing["trigger"] = trigger
+        # Track the most recent vertical rate (not just at creation) so the
+        # quiet-timeout confidence scorer can see whether the aircraft was
+        # still descending right before it went quiet. Only overwrite when
+        # we actually got a fresh reading -- preserve the last known value
+        # if this field is missing/stale on a given poll.
+        if vertical_rate is not None:
+            existing["vertical_rate"] = vertical_rate
 
         existing["last_contact"] = last_contact
         existing["time_position"] = time_position
@@ -234,7 +251,8 @@ class Tracker:
 
     def update_landing_candidate_from_poll(self, icao24, now, lat, lon, velocity, baro_altitude,
                                             display_callsign, altitude_ft, altitude_source,
-                                            on_ground, last_contact, time_position):
+                                            on_ground, last_contact, time_position,
+                                            vertical_rate=None):
         """Refresh an existing landing candidate that isn't (re-)triggering this poll."""
         candidate = self.state.bucket("landing_candidates").get(icao24)
         if candidate is None:
@@ -258,6 +276,8 @@ class Tracker:
             candidate["velocity"] = velocity
         if baro_altitude is not None:
             candidate["baro_altitude"] = baro_altitude
+        if vertical_rate is not None:
+            candidate["vertical_rate"] = vertical_rate
         if display_callsign:
             candidate["callsign"] = display_callsign
         if altitude_ft is not None:
@@ -363,6 +383,67 @@ class Tracker:
                 return True
 
         return False
+
+    # --------------------------------------------- quiet-timeout confidence
+    def compute_landing_confidence_score(self, icao24, item):
+        """Weighted approach-confidence score for a landing candidate that
+        has gone quiet (no fresh OpenSky position/contact update at all).
+
+        A bare quiet timeout is not, by itself, reliable evidence of a
+        landing: OpenSky state vectors are snapshots and can omit stale
+        position/velocity fields after roughly 15 seconds without a fresh
+        update, and on_ground is not guaranteed to be reported right at
+        touchdown. Instead, silence is combined with corroborating
+        approach evidence -- low altitude, recent descent, and low speed
+        -- so only a genuinely landing-shaped candidate clears the bar.
+
+        Returns (score, reasons) where reasons is a list of human-readable
+        strings for logging.
+        """
+        score = 0
+        reasons = []
+
+        if item.get("on_ground_seen"):
+            score += 3
+            reasons.append("on_ground_seen(+3)")
+
+        lowest_altitude_ft = item.get("lowest_altitude_ft")
+        if lowest_altitude_ft is not None and lowest_altitude_ft < self.config.landing_quiet_low_alt_ft:
+            score += 2
+            reasons.append(f"lowest_alt_ft={lowest_altitude_ft:.0f}<{self.config.landing_quiet_low_alt_ft:.0f}(+2)")
+
+        current_altitude_ft = item.get("current_altitude_ft")
+        if current_altitude_ft is not None and current_altitude_ft < self.config.landing_quiet_current_alt_ft:
+            score += 2
+            reasons.append(
+                f"current_alt_ft={current_altitude_ft:.0f}<{self.config.landing_quiet_current_alt_ft:.0f}(+2)"
+            )
+
+        vertical_rate = item.get("vertical_rate")
+        if vertical_rate is not None and vertical_rate < 0:
+            score += 1
+            reasons.append(f"vertical_rate={vertical_rate:.0f}<0(+1)")
+
+        velocity_kn = knots_from_mps(item.get("velocity"))
+        if velocity_kn is not None and velocity_kn < self.config.landing_quiet_speed_kn:
+            score += 1
+            reasons.append(f"speed_kn={velocity_kn:.0f}<{self.config.landing_quiet_speed_kn:.0f}(+1)")
+
+        if self.has_seen_airborne(icao24):
+            score += 1
+            reasons.append("previously_airborne(+1)")
+
+        first_seen_at = item.get("first_seen_at")
+        last_position_or_contact_at = item.get("last_position_or_contact_at")
+        if (
+            first_seen_at is not None
+            and last_position_or_contact_at is not None
+            and last_position_or_contact_at > first_seen_at
+        ):
+            score += 1
+            reasons.append("disappeared_after_candidate(+1)")
+
+        return score, reasons
 
     # --------------------------------------------------------- notification
     def send_landing_alert(self, icao24, item, confirmed=False):
@@ -585,18 +666,67 @@ class Tracker:
                     continue
 
             if last_position_or_contact_at is not None:
-                quiet_timeout_met = (
-                    now - last_position_or_contact_at
-                ) >= self.config.landing_no_position_timeout_sec
+                quiet_for = now - last_position_or_contact_at
+                quiet_timeout_met = quiet_for >= self.config.landing_no_position_timeout_sec
                 if quiet_timeout_met:
+                    # Silence alone isn't proof of landing -- score the
+                    # candidate on corroborating approach evidence (ground
+                    # contact, low altitude, descent, low speed) before
+                    # treating a quiet timeout as a likely landing.
+                    score, reasons = self.compute_landing_confidence_score(icao24, item)
+                    threshold = self.config.landing_quiet_confidence_threshold
+
+                    if score >= threshold:
+                        logger.info(
+                            "ALERT sending_after_position_timeout icao24=%s callsign=%s quiet_for=%.0f "
+                            "score=%d/%d reasons=%s",
+                            icao24,
+                            item.get("callsign") or "N/A",
+                            quiet_for,
+                            score,
+                            threshold,
+                            ",".join(reasons) or "none",
+                        )
+                        self.send_landing_alert(icao24, item, confirmed=False)
+                        done.append(icao24)
+                        continue
+
+                    hard_cap_met = quiet_for >= self.config.landing_quiet_hard_cap_sec
+                    if hard_cap_met:
+                        logger.info(
+                            "ALERT suppressed_low_confidence_timeout icao24=%s callsign=%s quiet_for=%.0f "
+                            "score=%d/%d reasons=%s",
+                            icao24,
+                            item.get("callsign") or "N/A",
+                            quiet_for,
+                            score,
+                            threshold,
+                            ",".join(reasons) or "none",
+                        )
+                        if self.events:
+                            self.events.log(
+                                "landing_suppressed_low_confidence",
+                                icao24=icao24,
+                                score=score,
+                                quiet_for=quiet_for,
+                            )
+                        # Release the flight lock so a genuine future landing
+                        # for this aircraft isn't permanently blocked by a
+                        # low-confidence quiet gap that never resolved.
+                        self.clear_flight_alert_lock(icao24)
+                        done.append(icao24)
+                        continue
+
                     logger.info(
-                        "ALERT sending_after_position_timeout icao24=%s callsign=%s quiet_for=%.0f",
+                        "ALERT low_confidence_quiet_waiting icao24=%s callsign=%s quiet_for=%.0f "
+                        "score=%d/%d reasons=%s",
                         icao24,
                         item.get("callsign") or "N/A",
-                        now - last_position_or_contact_at,
+                        quiet_for,
+                        score,
+                        threshold,
+                        ",".join(reasons) or "none",
                     )
-                    self.send_landing_alert(icao24, item, confirmed=False)
-                    done.append(icao24)
                     continue
 
             if now < item.get("recheck_after", now + self.config.landing_recheck_sec):
@@ -761,6 +891,7 @@ class Tracker:
                     on_ground=True,
                     last_contact=last_contact,
                     time_position=time_position,
+                    vertical_rate=vertical_rate,
                 )
                 self.remove_active_airborne_tracking(icao24)
                 logger.info("ALERT queued_confirmed_landing icao24=%s callsign=%s", icao24, display_callsign)
@@ -780,6 +911,7 @@ class Tracker:
                     on_ground=False,
                     last_contact=last_contact,
                     time_position=time_position,
+                    vertical_rate=vertical_rate,
                 )
                 self.remove_active_airborne_tracking(icao24)
                 logger.info(
@@ -804,6 +936,7 @@ class Tracker:
                     on_ground=False,
                     last_contact=last_contact,
                     time_position=time_position,
+                    vertical_rate=vertical_rate,
                 )
                 logger.info(
                     "ALERT queued_landing_candidate_10000 icao24=%s callsign=%s alt=%.0f vr=%s",
@@ -828,6 +961,7 @@ class Tracker:
                     on_ground=on_ground,
                     last_contact=last_contact,
                     time_position=time_position,
+                    vertical_rate=vertical_rate,
                 )
                 logger.info(
                     "ALERT promoted_airborne_watch icao24=%s callsign=%s alt=%s vr=%s",
@@ -851,6 +985,7 @@ class Tracker:
                     on_ground=on_ground,
                     last_contact=last_contact,
                     time_position=time_position,
+                    vertical_rate=vertical_rate,
                 )
 
             # Release the flight lock once the aircraft has climbed back out
