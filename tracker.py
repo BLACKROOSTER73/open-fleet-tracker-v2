@@ -499,6 +499,7 @@ class Tracker:
             f"{callsign} ({icao24.upper()}) {status_text} at {airport_name}.\n"
             f"Aircraft type: {aircraft_type}\n"
             f"Trigger: {item.get('trigger') or 'unknown'}\n"
+            f"Confirmation reason: {item.get('confirmation_reason') or 'unknown'}\n"
             f"Current altitude: {current_altitude_ft if current_altitude_ft is not None else 'N/A'} ft\n"
             f"Lowest tracked altitude: {item.get('lowest_altitude_ft') if item.get('lowest_altitude_ft') is not None else 'N/A'} ft\n"
             f"Altitude source: {item.get('altitude_source') or 'N/A'}\n"
@@ -595,6 +596,7 @@ class Tracker:
                 f"Aircraft type: {aircraft_type}\n"
                 f"Follow-up delay: {self.config.followup_delay_sec // 60} minutes\n"
                 f"Trigger: {item.get('trigger') or 'unknown'}\n"
+                f"Original confirmation reason: {item.get('confirmation_reason') or 'unknown'}\n"
                 f"Velocity: {velocity if velocity is not None else 'N/A'} kn\n"
                 f"Baro altitude: {baro_altitude if baro_altitude is not None else 'N/A'} ft\n\n"
                 f"{weather_block_text(weather)}"
@@ -644,6 +646,55 @@ class Tracker:
         for icao24 in done:
             tracked.pop(icao24, None)
 
+    def _check_airport_elevation_match(self, icao24, item, now):
+        """Returns True once the candidate's current altitude has matched
+        (within landing_airport_elevation_margin_ft of) the nearest
+        matching airport's field elevation for
+        landing_airport_elevation_min_polls consecutive checks in a row.
+
+        Resolves the nearest airport within airport_lookup_radius_miles via
+        the existing AirportIndex lookup, so it naturally does nothing if
+        the candidate isn't actually near any known airport.
+        """
+        current_altitude_ft = item.get("current_altitude_ft")
+        lat = item.get("lat")
+        lon = item.get("lon")
+
+        matched = False
+        if current_altitude_ft is not None and lat is not None and lon is not None:
+            airport = self.airports.resolve_airport(lat, lon)
+            elevation_ft = airport.get("elevation_ft") if airport else None
+            if elevation_ft is not None:
+                margin = abs(current_altitude_ft - elevation_ft)
+                if margin <= self.config.landing_airport_elevation_margin_ft:
+                    matched = True
+                    item["matched_airport_name"] = airport.get("name")
+                    item["matched_airport_elevation_ft"] = elevation_ft
+
+        if not matched:
+            item["elevation_match_poll_count"] = 0
+            item["elevation_match_first_seen_at"] = None
+            return False
+
+        item["elevation_match_poll_count"] = item.get("elevation_match_poll_count", 0) + 1
+        if item.get("elevation_match_first_seen_at") is None:
+            item["elevation_match_first_seen_at"] = now
+
+        if item["elevation_match_poll_count"] >= self.config.landing_airport_elevation_min_polls:
+            logger.info(
+                "ALERT airport_elevation_match icao24=%s callsign=%s altitude_ft=%.0f "
+                "airport=%s elevation_ft=%.0f polls=%d",
+                icao24,
+                item.get("callsign") or "N/A",
+                current_altitude_ft,
+                item.get("matched_airport_name") or "unknown",
+                item.get("matched_airport_elevation_ft"),
+                item["elevation_match_poll_count"],
+            )
+            return True
+
+        return False
+
     def process_landing_candidates(self):
         now = time.time()
         candidates = self.state.bucket("landing_candidates")
@@ -661,9 +712,22 @@ class Tracker:
                 ground_polls_met = on_ground_poll_count >= self.config.landing_on_ground_min_polls
 
                 if ground_hold_met or ground_polls_met:
+                    item["confirmation_reason"] = "on_ground_hold"
                     self.send_landing_alert(icao24, item, confirmed=True)
                     done.append(icao24)
                     continue
+
+            # Independent confirmation signal: on_ground isn't always
+            # reported reliably by every transponder/receiver pairing, but
+            # altitude vs. the nearest matching airport's known field
+            # elevation is available whenever geo/baro altitude is. Treat
+            # a sustained match as equivalent to being on the ground.
+            elevation_match = self._check_airport_elevation_match(icao24, item, now)
+            if elevation_match:
+                item["confirmation_reason"] = "airport_elevation_match"
+                self.send_landing_alert(icao24, item, confirmed=True)
+                done.append(icao24)
+                continue
 
             if last_position_or_contact_at is not None:
                 quiet_for = now - last_position_or_contact_at
@@ -687,6 +751,7 @@ class Tracker:
                             threshold,
                             ",".join(reasons) or "none",
                         )
+                        item["confirmation_reason"] = f"quiet_timeout_score({score}/{threshold})"
                         self.send_landing_alert(icao24, item, confirmed=False)
                         done.append(icao24)
                         continue

@@ -109,6 +109,13 @@ class AirportIndex:
         if pd.isna(iata):
             iata = ""
 
+        # elevation_ft is a standard OurAirports column but treated as
+        # optional here: .get() on a Series returns None if the column
+        # isn't present in the CSV at all, so older/trimmed airport CSVs
+        # without it just get elevation=None instead of crashing.
+        elevation_ft = best_row.get("elevation_ft")
+        elevation_ft = float(elevation_ft) if pd.notna(elevation_ft) else None
+
         return {
             "name": str(best_row.get("name", "Unknown Airport")),
             "icao": str(icao) if str(icao).strip() else "",
@@ -117,6 +124,7 @@ class AirportIndex:
             "max_runway_ft": float(best_row.get("max_runway_ft", 0) or 0),
             "lat": float(best_row.get("latitude_deg")),
             "lon": float(best_row.get("longitude_deg")),
+            "elevation_ft": elevation_ft,
         }
 
     def resolve_nearby_airports(self, lat, lon, limit=3):

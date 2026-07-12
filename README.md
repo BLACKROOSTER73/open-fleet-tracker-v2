@@ -121,6 +121,42 @@ OpenSky staleness window mentioned above.
 Source: [OpenSky REST API docs](https://openskynetwork.github.io/opensky-api/rest.html#limitations)
 on state vector field staleness and `on_ground` behavior.
 
+### Airport-elevation landing confirmation
+
+On every tick, alongside the `on_ground` ground-hold check, each landing
+candidate is also checked against the nearest matching airport's known
+field elevation from `airports.csv`:
+
+1. Resolve the nearest airport within `airport_lookup_radius_miles` for the
+   candidate's last known lat/lon (same lookup already used to name the
+   airport in alert text -- no new dependency).
+2. If that airport's `elevation_ft` is within `landing_airport_elevation_margin_ft`
+   (default 100 ft) of the candidate's current altitude, count it as a match.
+3. Once matched for `landing_airport_elevation_min_polls` (default 2)
+   consecutive polls in a row, confirm the landing immediately --
+   same `confirmed=True` path as the `on_ground` ground-hold, sent right
+   away rather than waiting on the quiet timeout.
+
+This exists because `on_ground` isn't reported reliably by every
+transponder/receiver pairing, but altitude is available whenever geo or
+baro altitude is, so comparing it to a known field elevation is a solid
+independent confirmation signal. It requires `airports.csv` to have an
+`elevation_ft` column -- the standard [OurAirports](https://ourairports.com/data/)
+schema already includes it, so if you're already using this project's
+airport lookups for alert text, no extra download is needed. If the column
+is missing, this check is silently skipped (everything else is unaffected).
+
+Caveat: barometric altitude is referenced to standard sea-level pressure
+(29.92 inHg), not the airport's actual local pressure, so on days with
+unusual pressure it can be off from true elevation by more than a token
+amount -- geo altitude (WGS84) doesn't have that specific issue but has its
+own small biases. A 100 ft margin already gives some headroom for this;
+tighten `landing_airport_elevation_margin_ft` if you want stricter matching,
+or loosen it if you see it never triggering at airports whose barometric
+readings tend to run further off. Every alert's body now also includes a
+"Confirmation reason" line (`on_ground_hold`, `airport_elevation_match`, or
+`quiet_timeout_score(...)`) so you can see which path fired.
+
 ## New optional config sections
 
 Both are disabled by default and change nothing about existing behavior:
@@ -186,7 +222,6 @@ occasional follow-up lookups. Only poll faster than that if you've
 narrowed the bounding box enough to drop into a cheaper credit tier, or
 have a higher-tier OpenSky account.
 
-
 ## Deploying on Pelican (auto-updating from GitHub)
 
 This project is designed to live in a GitHub repo and be deployed as a
@@ -195,7 +230,6 @@ and (b) pulls new commits from GitHub whenever you click **Reinstall** in
 the panel. `fleet_tracker.py` is still the only thing that ever runs --
 Pelican just automates the `git pull` + `pip install` steps that used to be
 manual.
-
 
 ### 1. Create a custom egg in the Pelican admin panel
 

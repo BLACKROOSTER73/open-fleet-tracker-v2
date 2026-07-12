@@ -150,6 +150,22 @@ class Config:
             "alerts", "landing_quiet_speed_kn", fallback=160.0
         )
 
+        # ---- airport-elevation landing confirmation ----
+        # Independent confirmation signal: if a candidate's current
+        # altitude is within this many feet of the nearest matching
+        # airport's surveyed field elevation (from airports.csv), treat it
+        # the same as on_ground -- not every transponder/receiver pairing
+        # reports on_ground reliably, but altitude vs. known field
+        # elevation is available whenever geo/baro altitude is. Requires
+        # landing_airport_elevation_min_polls consecutive matching polls to
+        # guard against a single altitude glitch.
+        self.landing_airport_elevation_margin_ft = parser.getfloat(
+            "alerts", "landing_airport_elevation_margin_ft", fallback=100.0
+        )
+        self.landing_airport_elevation_min_polls = parser.getint(
+            "alerts", "landing_airport_elevation_min_polls", fallback=2
+        )
+
         # ---- weather ----
         self.weather_timeout_sec = parser.getint("weather", "timeout_seconds", fallback=12)
 
