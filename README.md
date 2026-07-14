@@ -1,5 +1,7 @@
 # Open Fleet Tracker
 
+Tracks a list of user-defined aircraft via OpenSky, applies a few independent landing-confirmation checks (ground contact, airport elevation match, or a scored quiet-timeout), and notifies you through Discord (with email as a fallback) once it's confident one has landed.
+
 Modular rewrite of the Open Fleet Tracker. Behavior is 100% preserved from the
 original single-file script -- this is a structural refactor only, not a
 feature change.
