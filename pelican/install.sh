@@ -1,5 +1,5 @@
 #!/bin/bash
-# Full path (inside the project): steeljet_tracker/pelican/install.sh
+# Full path (inside the project): open-fleet-tracker/pelican/install.sh
 #
 # Paste this into the egg's "Install Script" field in the Pelican panel.
 # It runs in a separate, throwaway, root-privileged container -- NOT the
@@ -11,9 +11,12 @@
 # Recommended "Script Entry": bash
 #
 # Expects one egg Variable:
-#   GIT_REPOSITORY  -- e.g. https://github.com/yourusername/steeljet-tracker.git
+#   GIT_REPOSITORY  -- defaults to this project's own repo,
+#                      https://github.com/BLACKROOSTER73/open-fleet-tracker-v2.git,
+#                      if left blank/unset. Point it at your own fork/repo
+#                      instead if you want to track your own copy.
 #                      (for a private repo, use a token in the URL instead:
-#                      https://<TOKEN>@github.com/yourusername/steeljet-tracker.git)
+#                      https://<TOKEN>@github.com/<you>/<repo>.git)
 # Optional egg Variable:
 #   GIT_BRANCH      -- defaults to "main" if left blank/unset.
 
@@ -29,13 +32,8 @@ git config --global --add safe.directory /mnt/server
 
 cd /mnt/server || exit 1
 
-REPO="${GIT_REPOSITORY}"
+REPO="${GIT_REPOSITORY:-https://github.com/BLACKROOSTER73/open-fleet-tracker-v2.git}"
 BRANCH="${GIT_BRANCH:-main}"
-
-if [ -z "${REPO}" ]; then
-    echo "ERROR: GIT_REPOSITORY variable is not set. Set it on the server's Startup tab in the panel."
-    exit 1
-fi
 
 if [ -d .git ]; then
     echo "Existing repo found -- fetching latest from ${BRANCH}..."

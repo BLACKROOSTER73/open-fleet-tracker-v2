@@ -23,7 +23,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 # ---------------------------------------------------------------------------
-# VENDORED COPY -- Full path: steeljet_tracker/opensky_api.py
+# VENDORED COPY -- Full path: open-fleet-tracker/opensky_api.py
 #
 # This file is an unmodified copy of the official OpenSky Network Python
 # client, vendored directly into this project so the Pelican server does not

@@ -1,5 +1,5 @@
 """
-Full path: steeljet_tracker/events.py
+Full path: open-fleet-tracker/events.py
 
 Optional append-only event log (events.jsonl), for debugging why an alert
 did or did not fire. Disabled by default via config.ini [events] enabled =
@@ -11,7 +11,7 @@ import json
 import logging
 import time
 
-logger = logging.getLogger("steeljet")
+logger = logging.getLogger("open-fleet-tracker")
 
 
 class EventLog:

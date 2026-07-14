@@ -159,6 +159,23 @@ readings tend to run further off. Every alert's body now also includes a
 "Confirmation reason" line (`on_ground_hold`, `airport_elevation_match`, or
 `quiet_timeout_score(...)`) so you can see which path fired.
 
+## Rebranding: one config key controls everything announced to the user
+
+Everything shown to you or your users -- the console startup log line, the
+Discord embed username, and the email "From" name -- is driven by a single
+`[general] app_name` key in `config.ini` (default: `Open Fleet Tracker`),
+not hardcoded anywhere in the code:
+
+```ini
+[general]
+app_name = My Custom Fleet
+```
+
+If you want just one channel to say something different, `[discord] app_name`
+and `[smtp] from_name` still work as per-channel overrides -- leave either
+blank to fall back to `[general] app_name` (with `" Alerts"` appended for
+the email From name). See `example.config.ini` for both.
+
 ## New optional config sections
 
 Both are disabled by default and change nothing about existing behavior:

@@ -1,5 +1,5 @@
 """
-Full path: steeljet_tracker/tracker.py
+Full path: open-fleet-tracker/tracker.py
 
 The flight-phase state machine: turns raw OpenSky state vectors into
 landing candidates and confirmed-landing alerts.
@@ -29,7 +29,7 @@ import pandas as pd
 
 from weather import get_airport_weather, weather_block_text
 
-logger = logging.getLogger("steeljet")
+logger = logging.getLogger("open-fleet-tracker")
 
 
 def feet_from_meters(val):

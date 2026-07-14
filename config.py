@@ -1,7 +1,7 @@
 """
-Full path: steeljet_tracker/config.py
+Full path: open-fleet-tracker/config.py
 
-Configuration loader for SteelJet Tracker.
+Configuration loader for the fleet tracker.
 
 Reads config.ini (same file/format used by the original single-file
 fleet_tracker.py) and exposes every setting as an attribute on a single
@@ -31,6 +31,13 @@ class Config:
             raise SystemExit(f"Could not read config file: {self.config_path}")
         self._parser = parser
 
+        # ---- general ----
+        # Single source of truth for anything announced to the user (console
+        # startup log line, Discord embed username, email From name). Change
+        # this one key to rebrand everywhere; discord.app_name / smtp.from_name
+        # below can still be set individually to override it per-channel.
+        self.app_name = parser.get("general", "app_name", fallback="Open Fleet Tracker")
+
         # ---- logging ----
         self.log_file = parser.get("logging", "log_file", fallback=str(BASE_DIR / "opensky_alerts.log"))
         self.log_max_bytes = parser.getint("logging", "max_bytes", fallback=5 * 1024 * 1024)
@@ -47,7 +54,10 @@ class Config:
         self.discord_avatar_url = parser.get(
             "discord", "avatar_url", fallback="https://i.imgur.com/4M34hi2.png"
         )
-        self.discord_app_name = parser.get("discord", "app_name", fallback="SteelJet Tracker")
+        # An explicitly-blank key in config.ini (app_name = ) still counts as
+        # "present" to configparser, so parser.get()'s fallback wouldn't kick
+        # in on its own -- fall back to the general app_name ourselves too.
+        self.discord_app_name = parser.get("discord", "app_name", fallback=self.app_name) or self.app_name
 
         # ---- smtp ----
         self.smtp_host = parser.get("smtp", "host", fallback="")
@@ -55,7 +65,7 @@ class Config:
         self.smtp_user = parser.get("smtp", "user", fallback="")
         self.smtp_password = parser.get("smtp", "password", fallback="")
         self.smtp_to = parser.get("smtp", "to", fallback="")
-        self.smtp_from_name = parser.get("smtp", "from_name", fallback="SteelJet Tracker Alerts")
+        self.smtp_from_name = parser.get("smtp", "from_name", fallback=f"{self.app_name} Alerts") or f"{self.app_name} Alerts"
 
         # ---- tracker ----
         self.poll_seconds = parser.getint("tracker", "poll_seconds", fallback=60)

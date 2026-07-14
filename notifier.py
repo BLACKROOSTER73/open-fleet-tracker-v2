@@ -1,5 +1,5 @@
 """
-Full path: steeljet_tracker/notifier.py
+Full path: open-fleet-tracker/notifier.py
 
 Delivery layer: Discord webhook (primary) with retry + separate
 connect/read timeouts, and SMTP email (fallback). Isolated from tracker
@@ -17,7 +17,7 @@ import requests
 
 from weather import weather_block_text
 
-logger = logging.getLogger("steeljet")
+logger = logging.getLogger("open-fleet-tracker")
 
 
 class Notifier:
@@ -139,7 +139,7 @@ class Notifier:
             "avatar_url": self.config.discord_avatar_url,
             "embeds": [
                 {
-                    "title": "SteelJet Tracker Test",
+                    "title": f"{self.config.app_name} Test",
                     "description": "This is a test notification from the tracker.",
                     "color": 3447003,
                     "fields": [{"name": "Status", "value": "Discord webhook test succeeded", "inline": False}],
@@ -183,7 +183,7 @@ class Notifier:
             return False
 
     def send_email_test(self):
-        return self.send_email("SteelJet Tracker Test", "This is a test notification from the tracker.")
+        return self.send_email(f"{self.config.app_name} Test", "This is a test notification from the tracker.")
 
     # -------------------------------------------------------------- Combined
     def send_alert(self, subject, body, icao24, **discord_kwargs):

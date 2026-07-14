@@ -1,4 +1,4 @@
-# Full path: steeljet_tracker/.gitignore
+# Full path: open-fleet-tracker/.gitignore
 #
 # Anything listed here stays on the server (or your machine) but never gets
 # committed or pushed to GitHub, and is never touched by `git pull` /

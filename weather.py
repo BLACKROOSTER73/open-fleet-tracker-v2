@@ -1,5 +1,5 @@
 """
-Full path: steeljet_tracker/weather.py
+Full path: open-fleet-tracker/weather.py
 
 METAR/TAF lookups from aviationweather.gov for the airport an alert resolves
 to. Same behavior as the original single-file tracker's weather functions.
@@ -9,7 +9,7 @@ import logging
 
 import requests
 
-logger = logging.getLogger("steeljet")
+logger = logging.getLogger("open-fleet-tracker")
 
 BASE_URL = "https://aviationweather.gov/api/data"
 

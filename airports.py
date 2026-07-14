@@ -1,5 +1,5 @@
 """
-Full path: steeljet_tracker/airports.py
+Full path: open-fleet-tracker/airports.py
 
 Airport + runway lookups used to resolve the nearest matching airport (and
 nearby alternates) for a given lat/lon. Behavior is identical to the
@@ -12,7 +12,7 @@ import logging
 
 import pandas as pd
 
-logger = logging.getLogger("steeljet")
+logger = logging.getLogger("open-fleet-tracker")
 
 VALID_AIRPORT_TYPES = {"large_airport", "medium_airport", "small_airport", "heliport"}
 

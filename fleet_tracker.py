@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Full path: steeljet_tracker/fleet_tracker.py
+Full path: open-fleet-tracker/fleet_tracker.py
 
-SINGLE ENTRY POINT for SteelJet Tracker.
+SINGLE ENTRY POINT for the fleet tracker.
+
+The display name shown in the console startup line, Discord embeds, and
+email alerts is fully configurable via [general] app_name in config.ini
+(see config.py / example.config.ini) -- nothing here is hardcoded.
 
 This is the only file you ever run. Every other module in this project
 (config.py, logging_setup.py, state_store.py, airports.py, weather.py,
@@ -50,7 +54,7 @@ def build_app(config_path=None):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="SteelJet Tracker")
+    parser = argparse.ArgumentParser(description="Fleet tracker (single entry point)")
     parser.add_argument("--config", default=None, help="Full path to config.ini (defaults to config.ini next to this script)")
     parser.add_argument("--test-discord", action="store_true", help="Send a Discord test message and exit")
     parser.add_argument("--test-email", action="store_true", help="Send an email test message and exit")
@@ -90,7 +94,8 @@ def main():
         sys.exit(0)
 
     logger.info(
-        "SteelJet Tracker starting up. Tracking %d ICAO24(s). Discord app_name=%s",
+        "%s starting up. Tracking %d ICAO24(s). Discord app_name=%s",
+        config.app_name,
         len(config.icaos),
         config.discord_app_name,
     )

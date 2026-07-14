@@ -1,5 +1,5 @@
 """
-Full path: steeljet_tracker/state_store.py
+Full path: open-fleet-tracker/state_store.py
 
 Loads and persists the tracker's runtime state (landing candidates, airborne
 watch list, alert locks, seen-airborne flags, etc.) to a single JSON file.
@@ -12,7 +12,7 @@ alert_state.json and it will load right in.
 import json
 import logging
 
-logger = logging.getLogger("steeljet")
+logger = logging.getLogger("open-fleet-tracker")
 
 DEFAULT_BUCKETS = {
     "last_ground": {},

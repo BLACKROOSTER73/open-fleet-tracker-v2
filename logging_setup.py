@@ -1,5 +1,5 @@
 """
-Full path: steeljet_tracker/logging_setup.py
+Full path: open-fleet-tracker/logging_setup.py
 
 Central logger setup so every module shares one configured logger (file +
 console handlers) instead of each file wiring its own.
@@ -10,7 +10,7 @@ from logging.handlers import RotatingFileHandler
 
 
 def build_logger(config):
-    logger = logging.getLogger("steeljet")
+    logger = logging.getLogger("open-fleet-tracker")
     logger.setLevel(logging.INFO)
 
     if logger.handlers:

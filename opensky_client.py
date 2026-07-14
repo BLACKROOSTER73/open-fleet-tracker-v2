@@ -1,5 +1,5 @@
 """
-Full path: steeljet_tracker/opensky_client.py
+Full path: open-fleet-tracker/opensky_client.py
 
 Thin wrapper around the OpenSky python client: builds the authenticated
 `OpenSkyApi` instance, polls `/states/all`, and applies the same 429 backoff
@@ -13,7 +13,7 @@ import time
 import requests
 from opensky_api import OpenSkyApi, TokenManager
 
-logger = logging.getLogger("steeljet")
+logger = logging.getLogger("open-fleet-tracker")
 
 
 class OpenSkyClient:
