@@ -116,12 +116,12 @@ def main():
                 continue
 
             logger.info(
-                "STATUS tracked=%d visible=%d landing_candidates=%d pending_confirmations=%d airborne_tracking=%d backoff=idle",
+                "STATUS tracked=%d visible=%d landing_candidates=%d pending_confirmations=%d airborne_tracking=%s backoff=idle",
                 len(config.icaos),
                 len(aircraft_list),
                 len(state.bucket("landing_candidates")),
                 len(state.bucket("pending_confirmations")),
-                len(state.bucket("active_airborne_tracking")),
+                tracker.airborne_tracking_tail_display(),
             )
 
             tracker.process_aircraft_list(aircraft_list)

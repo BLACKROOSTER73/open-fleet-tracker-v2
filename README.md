@@ -1,6 +1,6 @@
-# Open Fleet Tracker
+# SteelJet Tracker
 
-Modular rewrite of the Open Fleet Tracker. Behavior is 100% preserved from the
+Modular rewrite of the SteelJet Tracker. Behavior is 100% preserved from the
 original single-file script -- this is a structural refactor only, not a
 feature change.
 
@@ -11,7 +11,7 @@ point; every other `.py` file here is a plain local import used by it. On
 your Pelican server, set the startup/process command to:
 
 ```
-python3 /full/path/to/open-fleet-tracker-v2/fleet_tracker.py
+python3 /full/path/to/steeljet_tracker/fleet_tracker.py
 ```
 
 There is nothing else to start alongside it -- no second console, no
@@ -70,6 +70,8 @@ python3 fleet_tracker.py --force-pending-alerts
 ```
 
 With no flags, it runs the normal continuous poll loop.
+
+The recurring console `STATUS ...` line's `airborne_tracking=` field now shows a comma-separated list of short tail numbers instead of a bare count -- each tracked aircraft's callsign has its leading letters stripped (e.g. `JTZ316` displays as `316`), falling back to the bare ICAO24 hex if no callsign is known yet, or `none` if nothing is currently being tracked as airborne.
 
 ## Landing detection: quiet-timeout confidence scoring
 
@@ -231,7 +233,25 @@ the panel. `fleet_tracker.py` is still the only thing that ever runs --
 Pelican just automates the `git pull` + `pip install` steps that used to be
 manual.
 
-### 1. Create a custom egg in the Pelican admin panel
+### 1. Push this project to GitHub
+
+```
+cd steeljet_tracker
+git init
+git add .
+git commit -m "Initial commit"
+git branch -M main
+git remote add origin https://github.com/<you>/steeljet-tracker.git
+git push -u origin main
+```
+
+Because of `.gitignore`, your real `config.ini`, `alert_state.json`, logs,
+`events.jsonl`, and the `airports.csv`/`runways.csv` data files are never
+committed -- only code and `example.config.ini` (which has every secret
+blank) go up. A private repo is still recommended out of general caution,
+but nothing secret ever leaves your machine either way.
+
+### 2. Create a custom egg in the Pelican admin panel
 
 Go to **Admin -> Eggs -> New Egg** (or **Import Egg** if you'd rather build
 from a template) and fill in:
@@ -252,13 +272,13 @@ container has no root and doesn't keep whatever the install container had,
 which is exactly why `pip install` is chained onto the front of the startup
 command instead of done once during install.
 
-### 2. Add two Variables to the egg
+### 3. Add two Variables to the egg
 
 In the egg's **Variables** tab, add:
 
 | Name | Environment Variable | Default value | User viewable/editable |
 |---|---|---|---|
-| Git Repository | `GIT_REPOSITORY` | `https://github.com/BLACKROOSTER73/open-fleet-tracker-v2.git` | Yes / Yes |
+| Git Repository | `GIT_REPOSITORY` | `https://github.com/<you>/steeljet-tracker.git` | Yes / Yes |
 | Git Branch | `GIT_BRANCH` | `main` | Yes / Yes |
 
 The install script reads these as `${GIT_REPOSITORY}` / `${GIT_BRANCH}`. If
@@ -266,14 +286,14 @@ your repo is private, put a personal access token directly in the URL
 instead of using a separate credential field:
 `https://<TOKEN>@github.com/<you>/steeljet-tracker.git`.
 
-### 3. Create the server from that egg
+### 4. Create the server from that egg
 
 Create a new server, pick your new egg, and set the two variables above to
 your real repo URL/branch. On creation, Pelican runs the Install Script,
 which clones your repo into the server's data directory and creates
 `config.ini` from `example.config.ini` if one doesn't exist yet.
 
-### 4. Upload the files git doesn't track
+### 5. Upload the files git doesn't track
 
 Over SFTP (the panel gives you SFTP credentials per-server), upload:
 
@@ -286,14 +306,14 @@ Over SFTP (the panel gives you SFTP credentials per-server), upload:
 None of these are ever touched by a later `git pull`/Reinstall, because
 they're all listed in `.gitignore`.
 
-### 5. Start the server
+### 6. Start the server
 
 Start it from the panel. The Startup Command installs `pandas`/`requests`
 (a few seconds, since `opensky_api.py` is vendored and needs no separate
 install -- see the Module layout table above) and then runs
 `python3 fleet_tracker.py` exactly as it would from a plain terminal.
 
-### 6. Deploying updates later
+### 7. Deploying updates later
 
 Whenever you push new commits to GitHub:
 

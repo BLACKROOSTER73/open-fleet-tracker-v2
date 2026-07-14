@@ -22,6 +22,7 @@ This preserves every rule your single-file tracker had accumulated:
 """
 
 import logging
+import re
 import time
 
 import pandas as pd
@@ -43,6 +44,24 @@ def knots_from_mps(val):
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return None
     return float(val) * 1.94384
+
+
+def tail_number_from_callsign(callsign):
+    """Best-effort short "tail number" for console/log display: strips a
+    leading alphabetic prefix (a fleet/airline callsign prefix, e.g. the
+    "JTZ" in "JTZ316") and keeps the trailing alphanumeric part, so a
+    callsign like "JTZ316" displays as "316". Falls back to the callsign
+    as-is if it doesn't match that shape, or None if there's no callsign.
+    """
+    if not callsign:
+        return None
+    trimmed = str(callsign).strip()
+    if not trimmed:
+        return None
+    match = re.match(r"^[A-Za-z]+(\w*\d\w*)$", trimmed)
+    if match:
+        return match.group(1)
+    return trimmed
 
 
 def get_altitude_ft(aircraft):
@@ -1082,6 +1101,23 @@ class Tracker:
         self.process_pending_confirmations()
         self.process_landing_candidates()
         self.process_active_airborne_tracking()
+
+    def airborne_tracking_tail_display(self):
+        """Comma-separated short tail numbers (see tail_number_from_callsign)
+        for everything currently in active_airborne_tracking, for the
+        console STATUS line. Falls back to the bare icao24 (uppercased)
+        when there's no callsign yet, and to "none" when nothing is being
+        tracked, so the STATUS line is never blank.
+        """
+        tracked = self.state.bucket("active_airborne_tracking")
+        if not tracked:
+            return "none"
+
+        tails = []
+        for icao24, item in tracked.items():
+            tail = tail_number_from_callsign(item.get("callsign")) or icao24.upper()
+            tails.append(tail)
+        return ",".join(tails)
 
     def status_snapshot(self):
         return {
