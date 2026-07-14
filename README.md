@@ -71,7 +71,7 @@ python3 fleet_tracker.py --force-pending-alerts
 
 With no flags, it runs the normal continuous poll loop.
 
-The recurring console `STATUS ...` line's `airborne_tracking=` field now shows a comma-separated list of short tail numbers instead of a bare count -- each tracked aircraft's callsign has its leading letters stripped (e.g. `JTZ316` displays as `316`), falling back to the bare ICAO24 hex if no callsign is known yet, or `none` if nothing is currently being tracked as airborne.
+The recurring console `STATUS ...` line's `airborne_tracking=` field now shows a comma-separated list of short tail numbers instead of a bare count -- each tracked aircraft's callsign has its leading letters stripped (e.g. `N6789G` displays as `6789`), falling back to the bare ICAO24 hex if no callsign is known yet, or `none` if nothing is currently being tracked as airborne.
 
 ## Landing detection: quiet-timeout confidence scoring
 
