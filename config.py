@@ -179,6 +179,19 @@ class Config:
         # ---- weather ----
         self.weather_timeout_sec = parser.getint("weather", "timeout_seconds", fallback=12)
 
+        # ---- fallback: optional free ADSBX-compatible mirror (adsb.fi/adsb.lol) ----
+        # Only queried for tracked ICAO24s that OpenSky's own poll did not
+        # return this cycle -- e.g. an aircraft sitting in an area with
+        # sparser OpenSky receiver coverage than ADS-B Exchange's. Never
+        # replaces OpenSky as the primary source. Disabled by default since
+        # it depends on a third-party free/community service -- see
+        # adsbfi_client.py and the README's Fallback data source section.
+        self.adsbfi_enabled = parser.getboolean("fallback", "enabled", fallback=False)
+        self.adsbfi_base_url = parser.get(
+            "fallback", "base_url", fallback="https://opendata.adsb.fi/api"
+        ).strip().rstrip("/") or "https://opendata.adsb.fi/api"
+        self.adsbfi_timeout_seconds = parser.getint("fallback", "timeout_seconds", fallback=10)
+
         # ---- aircraft_types ----
         self.aircraft_types = {}
         if parser.has_section("aircraft_types"):

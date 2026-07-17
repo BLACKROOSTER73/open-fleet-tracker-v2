@@ -75,13 +75,14 @@ def get_altitude_ft(aircraft):
 
 
 class Tracker:
-    def __init__(self, config, state, opensky, airports, notifier, events=None):
+    def __init__(self, config, state, opensky, airports, notifier, events=None, adsbfi=None):
         self.config = config
         self.state = state
         self.opensky = opensky
         self.airports = airports
         self.notifier = notifier
         self.events = events
+        self.adsbfi = adsbfi
 
     # ------------------------------------------------------------- climb math
     def is_climbing(self, aircraft, icao24, current_altitude_ft):
@@ -859,6 +860,39 @@ class Tracker:
 
         self.state.save()
         return sent_count
+
+    # ---------------------------------------------------- fallback merge
+    def merge_fallback_aircraft(self, aircraft_list):
+        """Looks up any tracked ICAO24s missing from this cycle's OpenSky
+        results (e.g. sparse OpenSky receiver coverage for that aircraft)
+        against the optional adsb.fi/adsb.lol fallback, and merges in
+        whatever it finds. Zero extra network calls when [fallback]
+        enabled = false or every tracked aircraft was already seen by
+        OpenSky this cycle.
+        """
+        if not self.config.adsbfi_enabled or self.adsbfi is None:
+            return aircraft_list
+
+        seen = {(getattr(a, "icao24", None) or "").lower() for a in aircraft_list}
+        missing = [icao for icao in self.config.icaos if icao not in seen]
+        if not missing:
+            return aircraft_list
+
+        fallback_hits = self.adsbfi.fetch_missing(missing)
+        if not fallback_hits:
+            return aircraft_list
+
+        # Defensive: only keep hits for ICAOs we actually asked about and
+        # that OpenSky didn't already give us, in case a fallback provider
+        # ever echoes back something unrequested.
+        missing_set = set(missing)
+        new_hits = [
+            a for a in fallback_hits if (getattr(a, "icao24", None) or "").lower() in missing_set
+        ]
+        if not new_hits:
+            return aircraft_list
+
+        return list(aircraft_list) + new_hits
 
     # ------------------------------------------------------------- main tick
     def process_aircraft_list(self, aircraft_list):

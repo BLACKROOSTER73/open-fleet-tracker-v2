@@ -1,7 +1,5 @@
 # Open Fleet Tracker
 
-Tracks a list of user-defined aircraft via OpenSky, applies a few independent landing-confirmation checks (ground contact, airport elevation match, or a scored quiet-timeout), and notifies you through Discord (with email as a fallback) once it's confident one has landed.
-
 Modular rewrite of the Open Fleet Tracker. Behavior is 100% preserved from the
 original single-file script -- this is a structural refactor only, not a
 feature change.
@@ -55,6 +53,7 @@ set `[tracker] state_file = /full/path/to/alert_state.json` in `config.ini`.
 | `airports.py` | Airport/runway CSV loading, nearest-airport + nearby-airports lookups. |
 | `weather.py` | METAR/TAF lookups from aviationweather.gov. |
 | `opensky_client.py` | OpenSky auth (basic or OAuth2 TokenManager), `/states/all` polling with 429 backoff, single-aircraft follow-up lookups. |
+| `adsbfi_client.py` | Optional free adsb.fi/adsb.lol fallback lookup for tracked aircraft OpenSky's poll misses (disabled by default). See "Fallback data source" below. |
 | `notifier.py` | Discord webhook (2 retries, `(5, 20)` timeout) with SMTP email fallback. |
 | `events.py` | Optional append-only `events.jsonl` debug log (disabled by default). |
 | `tracker.py` | All flight-phase/landing-detection logic: seen-airborne gate, flight locks, landing candidates, airborne watch list, alert sending. |
@@ -73,7 +72,7 @@ python3 fleet_tracker.py --force-pending-alerts
 
 With no flags, it runs the normal continuous poll loop.
 
-The recurring console `STATUS ...` line's `airborne_tracking=` field now shows a comma-separated list of short tail numbers instead of a bare count -- each tracked aircraft's callsign has its leading letters stripped (e.g. `N6789G` displays as `6789`), falling back to the bare ICAO24 hex if no callsign is known yet, or `none` if nothing is currently being tracked as airborne.
+The recurring console `STATUS ...` line's `airborne_tracking=` field now shows a comma-separated list of short tail numbers instead of a bare count -- each tracked aircraft's callsign has its leading letters stripped (e.g. `JTZ316` displays as `316`), falling back to the bare ICAO24 hex if no callsign is known yet, or `none` if nothing is currently being tracked as airborne.
 
 ## Landing detection: quiet-timeout confidence scoring
 
@@ -180,13 +179,72 @@ the email From name). See `example.config.ini` for both.
 
 ## New optional config sections
 
-Both are disabled by default and change nothing about existing behavior:
+All three are disabled by default and change nothing about existing behavior:
 
+- `[fallback]` -- optional free ADS-B Exchange-compatible mirror (adsb.fi /
+  adsb.lol) used only for tracked aircraft OpenSky's poll misses. See
+  "Fallback data source" below.
 - `[api]` -- placeholder for a possible future local read-only status
   server. Not implemented; safe to ignore.
 - `[events]` -- if you set `enabled = true`, the tracker appends one JSON
   line per notable event (candidate created, alert sent/suppressed, etc.)
   to `events_file`, useful for debugging why an alert did or didn't fire.
+
+## Fallback data source: adsb.fi/adsb.lol for OpenSky coverage gaps
+
+OpenSky is crowdsourced from volunteer ADS-B receivers, so its coverage
+isn't uniform -- some aircraft that are perfectly visible on ADS-B Exchange
+(which aggregates a much larger receiver network) never show up in
+OpenSky's `/states/all` responses simply because no OpenSky-affiliated
+receiver is in range. That's a coverage gap, not a privacy block -- OpenSky
+isn't a participant in FAA LADD/BARR, so it has no mechanism to filter
+specific aircraft out.
+
+To cover that gap without paying for a commercial ADS-B Exchange plan, the
+tracker can optionally query [adsb.fi](https://adsb.fi), a free,
+community-run mirror that serves the same schema as ADS-B Exchange's v2
+API, as a fallback. Enable it in `config.ini`:
+
+```ini
+[fallback]
+enabled = true
+base_url = https://opendata.adsb.fi/api
+timeout_seconds = 10
+```
+
+[adsb.lol](https://adsb.lol) runs the same API schema, so pointing
+`base_url` at `https://api.adsb.lol/api` works as a drop-in alternative if
+you'd rather use that mirror instead.
+
+How it fits into the poll loop (see `adsbfi_client.py` and
+`Tracker.merge_fallback_aircraft()` in `tracker.py`):
+
+1. Every cycle, OpenSky's `/states/all` poll runs first, exactly as before.
+2. The tracker checks which of your configured `icaos` did **not** come
+   back in that poll.
+3. Only for those missing aircraft, it makes one request to adsb.fi's
+   `/v2/icao/<hex1>,<hex2>,...` endpoint.
+4. Any aircraft adsb.fi has current data for get merged into the same list
+   OpenSky returned (unit-converted to match: feet -> meters, knots ->
+   m/s), and go through the exact same landing-detection logic either way.
+
+This means: zero extra requests when `enabled = false` (the default), and
+zero extra requests even when enabled if every tracked aircraft is already
+visible via OpenSky that cycle -- adsb.fi is only ever hit for the specific
+aircraft you're missing, never as a bulk replacement for OpenSky.
+
+adsb.fi is free for personal, non-commercial use and rate-limits public,
+non-feeder requests to 1/second
+([adsb.fi opendata README](https://github.com/adsbfi/opendata/blob/main/README.md)).
+Since this fallback only ever fires once per poll cycle (60-120+ seconds by
+default) for a handful of ICAOs at most, it stays well under that limit on
+its own. If you enable this fallback, please keep crediting adsb.fi with a
+link back to [https://adsb.fi](https://adsb.fi) per their terms, same as
+this README does here.
+
+If a request to the fallback fails or times out for any reason, it's
+logged as a warning and the poll loop continues normally with whatever
+OpenSky returned -- an adsb.fi outage can never take down the main tracker.
 
 ## OpenSky rate limits, credits, and the optional bounding box
 

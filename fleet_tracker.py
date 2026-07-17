@@ -35,6 +35,7 @@ from config import Config
 from logging_setup import build_logger
 from state_store import StateStore
 from opensky_client import OpenSkyClient
+from adsbfi_client import AdsbFiClient
 from airports import AirportIndex
 from notifier import Notifier
 from events import EventLog
@@ -46,10 +47,11 @@ def build_app(config_path=None):
     logger = build_logger(config)
     state = StateStore(config.state_file)
     opensky = OpenSkyClient(config)
+    adsbfi = AdsbFiClient(config)
     airports = AirportIndex(config)
     events = EventLog(config)
     notifier = Notifier(config, events=events)
-    tracker = Tracker(config, state, opensky, airports, notifier, events=events)
+    tracker = Tracker(config, state, opensky, airports, notifier, events=events, adsbfi=adsbfi)
     return config, logger, state, tracker
 
 
@@ -116,6 +118,14 @@ def main():
             if retry_wait > 0:
                 time.sleep(config.poll_seconds)
                 continue
+
+            # Fallback lookup (adsb.fi/adsb.lol) for any tracked ICAO24s
+            # OpenSky's poll missed this cycle -- runs even when OpenSky
+            # returned an empty list, since that's exactly when a fallback
+            # hit matters most. No-ops entirely when [fallback] enabled is
+            # false in config.ini.
+            aircraft_list = tracker.merge_fallback_aircraft(aircraft_list or [])
+
             if not aircraft_list:
                 time.sleep(config.poll_seconds)
                 continue
